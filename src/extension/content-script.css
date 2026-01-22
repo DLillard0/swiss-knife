@@ -1,0 +1,334 @@
+#swiss-knife-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+.sk-panel {
+  position: fixed;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+  pointer-events: auto;
+}
+
+.sk-toolbar {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  max-width: calc(100vw - 24px);
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+  padding: 6px 8px;
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+  box-sizing: border-box;
+  cursor: move;
+}
+
+.sk-toolbar__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.sk-toolbar__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 10px;
+  padding: 0 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sk-toolbar__tool:hover {
+  background: #eef2f7;
+}
+
+.sk-toolbar__tool:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sk-toolbar__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.sk-toolbar__label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sk-toolbar__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.sk-toolbar__hint {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.sk-toolbar__hint--error {
+  color: #ef4444;
+}
+
+
+.sk-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: move;
+}
+
+.sk-panel__title {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.sk-panel__close {
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sk-panel__body {
+  padding: 10px 12px 12px;
+}
+
+.sk-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sk-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 12px;
+  padding: 10px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sk-tool-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sk-muted {
+  color: #64748b;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.sk-result {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.55;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 10px;
+  border-radius: 12px;
+  max-height: min(45vh, 480px);
+  overflow: auto;
+}
+
+/* -------------------------
+ * Markdown / code styling (scoped)
+ * 用于 ai-elements/Streamdown 的渲染结果，避免引入全局 tailwind 污染宿主网页
+ * ------------------------- */
+.sk-result :where(p, ul, ol, pre, blockquote, table) {
+  margin: 0.5em 0;
+}
+
+.sk-result :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0.7em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sk-result :where(h1) {
+  font-size: 1.15em;
+}
+.sk-result :where(h2) {
+  font-size: 1.1em;
+}
+.sk-result :where(h3) {
+  font-size: 1.05em;
+}
+
+.sk-result :where(a) {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sk-result :where(ul, ol) {
+  padding-left: 1.25em;
+}
+
+.sk-result :where(li) {
+  margin: 0.2em 0;
+}
+
+.sk-result :where(blockquote) {
+  padding: 0.6em 0.8em;
+  border-left: 3px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  border-radius: 10px;
+}
+
+.sk-result :where(hr) {
+  border: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  margin: 0.8em 0;
+}
+
+.sk-result :where(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.95em;
+}
+
+.sk-result :where(p > code, li > code) {
+  padding: 0.15em 0.35em;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.sk-result :where(pre) {
+  white-space: pre;
+  overflow: auto;
+  padding: 0.75em;
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.sk-result :where(pre code) {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.sk-result :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.sk-result :where(th, td) {
+  padding: 0.5em 0.6em;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  vertical-align: top;
+}
+
+.sk-result :where(th) {
+  text-align: left;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.sk-result :where(tr:last-child td) {
+  border-bottom: none;
+}
+
+.sk-result :where(td:last-child, th:last-child) {
+  border-right: none;
+}
+
+.sk-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sk-skeleton {
+  height: 12px;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.12),
+    rgba(148, 163, 184, 0.22),
+    rgba(148, 163, 184, 0.12)
+  );
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.2s ease-in-out infinite;
+}
+
+.sk-skeleton--title {
+  height: 14px;
+  width: 60%;
+}
+
+.sk-skeleton--short {
+  width: 75%;
+}
+
+@keyframes sk-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.sk-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sk-action-btn {
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+  color: #0f172a;
+  border-radius: 10px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}

@@ -1,0 +1,15 @@
+---
+alwaysApply: true
+---
+
+# 技术栈
+
+1. 语言：typescript
+2. 包管理工具：pnpm
+3. 打包工具：vite
+4. 前端框架：react
+6. lint 工具：eslint
+5. 前端 UI 框架：shadcn/ui，网址：https://github.com/shadcn-ui/ui
+6. ai sdk：AI SDK，网址：https://github.com/vercel/ai
+7. ai 渲染组件：ai-elements，网址：https://vercel.com/academy/ai-sdk/ai-elements
+8. chrome extension manifest 版本：Manifest V3
