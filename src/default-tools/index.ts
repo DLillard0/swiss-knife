@@ -1,8 +1,13 @@
 import { ToolDefinition } from "@/extension/shared/tool";
 import { translateTool } from "./translate";
 import { summarizePageTool } from "./summarize-page";
+import { zhToEnTool } from "./zh-to-en";
 
-const DEFAULT_TOOLS: ToolDefinition[] = [translateTool, summarizePageTool];
+const DEFAULT_TOOLS: ToolDefinition[] = [
+  translateTool,
+  summarizePageTool,
+  zhToEnTool
+];
 const DEFAULT_TOOL_ID_SET = new Set(DEFAULT_TOOLS.map((tool) => tool.id));
 
 const cloneTool = (tool: ToolDefinition): ToolDefinition => ({

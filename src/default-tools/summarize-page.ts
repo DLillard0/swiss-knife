@@ -17,7 +17,7 @@ const prompt = `
 
 export const summarizePageTool: ToolDefinition = {
   id: "summarize-page",
-  name: "网页总结",
+  name: "总结",
   icon: "BookOpen",
   systemPrompt,
   prompt,
