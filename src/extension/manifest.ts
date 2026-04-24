@@ -40,16 +40,19 @@ export default defineManifest({
     {
       matches: ["<all_urls>"],
       js: ["src/extension/content-script.tsx"],
-      css: ["src/extension/content-script.css"],
       run_at: "document_idle"
     }
   ],
   web_accessible_resources: [
     {
-      resources: [
-        "src/extension/popup/index.html",
-        "src/extension/content-script.css"
-      ],
+      resources: ["src/extension/popup/index.html"],
+      matches: ["<all_urls>"]
+    },
+    {
+      // Shadow DOM 内注入的 KaTeX CSS 通过 chrome-extension:// 绝对地址
+      // 加载字体文件，需要把字体加入 web_accessible_resources 才能被宿主页
+      // 作为 <font-face> 的 src 拉取。
+      resources: ["assets/KaTeX_*"],
       matches: ["<all_urls>"]
     }
   ]

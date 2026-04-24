@@ -44,6 +44,8 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import contentScriptCss from "./content-script.css?inline";
+import katexCss from "katex/dist/katex.min.css?inline";
 
 const mountId = "swiss-knife-root";
 const TOOLBAR_HEIGHT = 44;
@@ -833,11 +835,30 @@ function ContentShell() {
 
 const existingMount = document.getElementById(mountId);
 if (!existingMount) {
-  const mount = document.createElement("div");
-  mount.id = mountId;
-  document.documentElement.append(mount);
-  const root = createRoot(mount);
+  // Shadow DOM 隔离：所有扩展 UI 都挂进一个独立的 shadow root，
+  // 使得宿主页的 CSS（全局 reset、tailwind utility、`* { ... }` 等）无法
+  // 影响扩展 UI，反之亦然。
+  const host = document.createElement("div");
+  host.id = mountId;
+  const shadow = host.attachShadow({ mode: "open" });
 
+  // KaTeX CSS 的 url(/assets/...) 在宿主页 document 下会解析到宿主页源，
+  // 改写成 chrome-extension:// 绝对地址，确保字体文件能正确加载。
+  const assetsPrefix = chrome.runtime.getURL("assets/");
+  const katexStyle = document.createElement("style");
+  katexStyle.textContent = katexCss.replace(/\/assets\//g, assetsPrefix);
+  shadow.appendChild(katexStyle);
+
+  const style = document.createElement("style");
+  style.textContent = contentScriptCss;
+  shadow.appendChild(style);
+
+  const container = document.createElement("div");
+  shadow.appendChild(container);
+
+  document.documentElement.append(host);
+
+  const root = createRoot(container);
   root.render(
     <StrictMode>
       <ContentShell />

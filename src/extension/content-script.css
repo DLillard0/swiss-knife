@@ -1,8 +1,22 @@
-#swiss-knife-root {
-  position: fixed;
+:host {
+  all: initial;
+  position: fixed !important;
   inset: 0;
   z-index: 2147483647;
   pointer-events: none;
+  display: block;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  color-scheme: light;
+}
+
+:host * {
+  box-sizing: border-box;
 }
 
 .sk-panel {
