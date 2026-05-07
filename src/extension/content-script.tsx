@@ -33,6 +33,7 @@ import {
   isEditableTarget,
   matchesShortcut,
   parseShortcut,
+  type ShortcutSpec,
 } from "./shared/shortcut";
 import { getTools } from "./storage/tools";
 import {
@@ -40,6 +41,13 @@ import {
   STORAGE_KEY as CONFIG_STORAGE_KEY,
   type ResultPanelPosition,
 } from "./storage/config";
+import {
+  appendResultRecord,
+  clearResultHistory,
+  getResultHistory,
+  HISTORY_STORAGE_KEY,
+  type ResultRecord,
+} from "./storage/history";
 import {
   AiToolInteraction,
   type ToolRunRequest,
@@ -95,9 +103,66 @@ type PanelState =
   | {
       open: true;
       anchor: { x: number; y: number };
-      mode: "tools" | "result";
+      mode: "tools" | "result" | "history-list" | "history-detail";
       placement?: ResultPlacement;
+      historyRecord?: ResultRecord;
     };
+
+function formatTimeAgo(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  if (diff < 60_000) return "刚刚";
+  const min = Math.floor(diff / 60_000);
+  if (min < 60) return `${min} 分钟前`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour} 小时前`;
+  const day = Math.floor(hour / 24);
+  if (day < 30) return `${day} 天前`;
+  const date = new Date(timestamp);
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${m}-${d}`;
+}
+
+function HistoryRecorder({
+  run,
+  completion,
+  isLoading,
+  error,
+  maxSizeRef,
+  onRecorded,
+}: {
+  run: ToolRunRequest | null;
+  completion: string;
+  isLoading: boolean;
+  error: string | null;
+  maxSizeRef: React.MutableRefObject<number>;
+  onRecorded?: () => void;
+}) {
+  const savedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!run || isLoading) return;
+    if (error || !completion) return;
+    if (savedKeyRef.current === run.key) return;
+    savedKeyRef.current = run.key;
+    const max = maxSizeRef.current;
+    if (max <= 0) return;
+    void appendResultRecord(
+      {
+        toolId: run.tool.id,
+        toolName: run.tool.name,
+        toolIcon: run.tool.icon,
+        selectionExcerpt: run.collections.selection ?? "",
+        completion,
+      },
+      max
+    )
+      .then(() => onRecorded?.())
+      .catch((e) => {
+        console.warn("[Swiss Knife] save history failed:", e);
+      });
+  }, [run, completion, isLoading, error, maxSizeRef, onRecorded]);
+  return null;
+}
 
 function ContentShell() {
   const [tools, setTools] = useState<ToolDefinition[]>([]);
@@ -115,6 +180,12 @@ function ContentShell() {
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const resultPanelRef = useRef<HTMLDivElement | null>(null);
   const resultPositionRef = useRef<ResultPanelPosition>("default");
+  const historyMaxSizeRef = useRef<number>(0);
+  const [historyRecords, setHistoryRecords] = useState<ResultRecord[]>([]);
+  const [historyShortcuts, setHistoryShortcuts] = useState<{
+    last: string;
+    list: string;
+  }>({ last: "", list: "" });
   const dragRef = useRef<{
     offsetX: number;
     offsetY: number;
@@ -277,7 +348,13 @@ function ContentShell() {
     const load = async () => {
       try {
         const config = await getExtensionConfig();
-        if (!cancelled) resultPositionRef.current = config.resultPanelPosition;
+        if (cancelled) return;
+        resultPositionRef.current = config.resultPanelPosition;
+        historyMaxSizeRef.current = config.maxHistorySize;
+        setHistoryShortcuts({
+          last: config.historyLastShortcut,
+          list: config.historyListShortcut,
+        });
       } catch (e) {
         const message = e instanceof Error ? e.message : "未知错误";
         console.warn("[Swiss Knife] load config failed:", message);
@@ -296,6 +373,23 @@ function ContentShell() {
       cancelled = true;
       chrome.storage.onChanged.removeListener(onChanged);
     };
+  }, []);
+
+  useEffect(() => {
+    const onChanged: Parameters<
+      typeof chrome.storage.onChanged.addListener
+    >[0] = (changes, areaName) => {
+      if (areaName !== "local") return;
+      if (!changes?.[HISTORY_STORAGE_KEY]) return;
+      setPanel((prev) => {
+        if (!prev.open || prev.mode !== "history-list") return prev;
+        // 列表面板打开时，存储变化即时刷新一次
+        void getResultHistory().then((list) => setHistoryRecords(list));
+        return prev;
+      });
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
 
   useEffect(() => {
@@ -332,6 +426,15 @@ function ContentShell() {
       .filter((x): x is NonNullable<typeof x> => !!x);
   }, [tools]);
 
+  const historyShortcutBindings = useMemo(() => {
+    const out: { kind: "history-last" | "history-list"; spec: ShortcutSpec }[] = [];
+    const last = parseShortcut(historyShortcuts.last);
+    if (last) out.push({ kind: "history-last", spec: last });
+    const list = parseShortcut(historyShortcuts.list);
+    if (list) out.push({ kind: "history-list", spec: list });
+    return out;
+  }, [historyShortcuts.last, historyShortcuts.list]);
+
   const openAt = useCallback(
     (
       anchor: { x: number; y: number },
@@ -347,6 +450,60 @@ function ContentShell() {
     setPanel({ open: false });
     setRun(null);
   }, []);
+
+  const computeHistoryPlacement = useCallback((): ResultPlacement => {
+    const corner = resultPositionRef.current;
+    if (
+      corner === "top-left" ||
+      corner === "top-right" ||
+      corner === "bottom-left" ||
+      corner === "bottom-right"
+    ) {
+      return corner;
+    }
+    return "center";
+  }, []);
+
+  const openHistoryList = useCallback(async () => {
+    try {
+      const records = await getResultHistory();
+      setHistoryRecords(records);
+      const placement = computeHistoryPlacement();
+      setPanel({
+        open: true,
+        mode: "history-list",
+        placement,
+        anchor: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      });
+    } catch (e) {
+      console.warn("[Swiss Knife] open history list failed:", e);
+    }
+  }, [computeHistoryPlacement]);
+
+  const openHistoryDetail = useCallback(
+    (record: ResultRecord) => {
+      const placement = computeHistoryPlacement();
+      setPanel({
+        open: true,
+        mode: "history-detail",
+        placement,
+        anchor: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+        historyRecord: record,
+      });
+    },
+    [computeHistoryPlacement]
+  );
+
+  const openLastHistory = useCallback(async () => {
+    try {
+      const records = await getResultHistory();
+      if (records.length === 0) return;
+      setHistoryRecords(records);
+      openHistoryDetail(records[0]);
+    } catch (e) {
+      console.warn("[Swiss Knife] open last history failed:", e);
+    }
+  }, [openHistoryDetail]);
 
   const toggleToolbar = () => {
     // 没有 selection 时不展示 toolbar，且确保关闭
@@ -380,14 +537,25 @@ function ContentShell() {
   }, [panel.open, shortcutBindings.length]);
 
   useEffect(() => {
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: MouseEvent) => {
+      // Shadow DOM 内的事件冒泡到 document 时 e.target 会被重定向到 host 元素，
+      // 所以这里必须用 composedPath() 拿到真实的点击路径，否则永远判定为面板外。
+      const path = event.composedPath();
+      const toolbarEl = toolbarRef.current;
+      const resultEl = resultPanelRef.current;
+      const insidePanel = path.some(
+        (node) => node === toolbarEl || node === resultEl
+      );
+      if (insidePanel) {
+        return;
+      }
+
       const target = window.getSelection()?.anchorNode ?? null;
       const targetNode =
         target instanceof Element ? target : target?.parentElement ?? null;
       if (
         targetNode &&
-        (toolbarRef.current?.contains(targetNode) ||
-          resultPanelRef.current?.contains(targetNode))
+        (toolbarEl?.contains(targetNode) || resultEl?.contains(targetNode))
       ) {
         return;
       }
@@ -515,12 +683,25 @@ function ContentShell() {
     ]
   );
 
-  // 工具级快捷键：命中后直接运行 tool（不弹工具栏）
+  // 工具级快捷键 + 历史记录快捷键
   useEffect(() => {
-    if (shortcutBindings.length === 0) return;
+    if (shortcutBindings.length === 0 && historyShortcutBindings.length === 0)
+      return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
+
+      for (const binding of historyShortcutBindings) {
+        if (!matchesShortcut(e, binding.spec)) continue;
+        e.preventDefault();
+        e.stopPropagation();
+        if (binding.kind === "history-last") {
+          void openLastHistory();
+        } else {
+          void openHistoryList();
+        }
+        return;
+      }
 
       for (const binding of shortcutBindings) {
         if (!matchesShortcut(e, binding.spec)) continue;
@@ -567,10 +748,13 @@ function ContentShell() {
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [
     shortcutBindings,
+    historyShortcutBindings,
     collectSelectionText,
     collectSelectionContextText,
     collectPageContentText,
     runTool,
+    openHistoryList,
+    openLastHistory,
   ]);
 
   const panelAnchorY = panel.open ? panel.anchor.y : undefined;
@@ -698,7 +882,11 @@ function ContentShell() {
 
   const panelStyle: React.CSSProperties | undefined = useMemo(() => {
     if (!panel.open) return undefined;
-    if (panel.mode === "result") {
+    if (
+      panel.mode === "result" ||
+      panel.mode === "history-list" ||
+      panel.mode === "history-detail"
+    ) {
       if (panel.placement === "center") {
         return {
           left: "50%",
@@ -773,12 +961,155 @@ function ContentShell() {
     });
   }, [panel.open, panelMode, panelPlacement, panelAnchorY, scrollPos]);
 
+  const historyDetailRecord =
+    panel.open && panel.mode === "history-detail"
+      ? panel.historyRecord ?? null
+      : null;
+
   return (
     <>
-      {panel.open ? (
+      {panel.open && panel.mode === "history-list" ? (
+        <div
+          ref={resultPanelRef}
+          className="sk-panel sk-panel--history"
+          style={panelStyle}
+        >
+          <div
+            className="sk-panel__header"
+            onPointerDown={(event) =>
+              startDrag(event, resultPanelRef.current)
+            }
+          >
+            <p className="sk-panel__title">{`历史结果（${historyRecords.length}）`}</p>
+            <button
+              className="sk-panel__close"
+              onClick={closePanel}
+              type="button"
+            >
+              关闭
+            </button>
+          </div>
+          <div className="sk-panel__body">
+            {historyRecords.length === 0 ? (
+              <p className="sk-muted">暂无历史记录。</p>
+            ) : (
+              <div className="sk-history-list">
+                {historyRecords.map((rec) => {
+                  const Icon =
+                    ICONS[rec.toolIcon as keyof typeof ICONS] ?? Sparkles;
+                  return (
+                    <button
+                      key={rec.id}
+                      className="sk-history-item"
+                      type="button"
+                      onClick={() => openHistoryDetail(rec)}
+                      title={rec.toolName}
+                    >
+                      <span className="sk-history-item__icon">
+                        <Icon className="sk-toolbar__icon" />
+                      </span>
+                      <span className="sk-history-item__main">
+                        <span className="sk-history-item__head">
+                          <span className="sk-history-item__name">
+                            {rec.toolName}
+                          </span>
+                          <span className="sk-history-item__time">
+                            {formatTimeAgo(rec.createdAt)}
+                          </span>
+                        </span>
+                        {rec.selectionExcerpt ? (
+                          <span className="sk-history-item__excerpt">
+                            {rec.selectionExcerpt}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="sk-actions">
+              {historyRecords.length > 0 ? (
+                <button
+                  className="sk-action-btn"
+                  type="button"
+                  onClick={async () => {
+                    await clearResultHistory();
+                    setHistoryRecords([]);
+                  }}
+                >
+                  清空
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {historyDetailRecord ? (
+        <div ref={resultPanelRef} className="sk-panel" style={panelStyle}>
+          <div
+            className="sk-panel__header"
+            onPointerDown={(event) =>
+              startDrag(event, resultPanelRef.current)
+            }
+          >
+            <p className="sk-panel__title">{`历史：${historyDetailRecord.toolName}`}</p>
+            <button
+              className="sk-panel__close"
+              onClick={closePanel}
+              type="button"
+            >
+              关闭
+            </button>
+          </div>
+          <div className="sk-panel__body">
+            <div className="sk-result">
+              <Message from="assistant">
+                <MessageContent className="sk-ai-elements-content">
+                  <MessageResponse className="sk-ai-elements-response">
+                    {historyDetailRecord.completion}
+                  </MessageResponse>
+                </MessageContent>
+              </Message>
+            </div>
+            <div className="sk-actions">
+              <button
+                className="sk-action-btn"
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    historyDetailRecord.completion
+                  );
+                }}
+              >
+                复制
+              </button>
+              <button
+                className="sk-action-btn"
+                type="button"
+                onClick={() => {
+                  void openHistoryList();
+                }}
+              >
+                返回列表
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {panel.open && (panel.mode === "tools" || panel.mode === "result") ? (
         <AiToolInteraction run={run}>
           {({ completion, isLoading, error, stop }) => (
             <>
+              <HistoryRecorder
+                run={run}
+                completion={completion}
+                isLoading={isLoading}
+                error={error}
+                maxSizeRef={historyMaxSizeRef}
+              />
               {panel.mode === "tools" ? (
                 <div
                   ref={toolbarRef}

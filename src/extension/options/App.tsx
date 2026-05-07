@@ -19,10 +19,15 @@ import {
   clearExtensionConfig,
   getDefaultConfig,
   getExtensionConfig,
+  HISTORY_LIMITS,
   saveExtensionConfig,
   type ExtensionConfig,
   type ResultPanelPosition
 } from "../storage/config";
+import {
+  clearResultHistory,
+  getResultHistory
+} from "../storage/history";
 import {
   createTool,
   deleteTool,
@@ -83,6 +88,9 @@ export default function App() {
   const [testResult, setTestResult] = useState<Status>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const [historyCount, setHistoryCount] = useState<number | null>(null);
+  const [historyStatus, setHistoryStatus] = useState<Status>(null);
+
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [toolsLoading, setToolsLoading] = useState(true);
   const [toolsStatus, setToolsStatus] = useState<Status>(null);
@@ -137,7 +145,10 @@ export default function App() {
       form.apiBaseUrl !== loaded.apiBaseUrl ||
       form.token !== loaded.token ||
       form.model !== loaded.model ||
-      form.resultPanelPosition !== loaded.resultPanelPosition
+      form.resultPanelPosition !== loaded.resultPanelPosition ||
+      form.maxHistorySize !== loaded.maxHistorySize ||
+      form.historyLastShortcut !== loaded.historyLastShortcut ||
+      form.historyListShortcut !== loaded.historyListShortcut
     );
   }, [form, loaded]);
 
@@ -152,6 +163,30 @@ export default function App() {
     event.preventDefault();
     if (saving || !isDirty) return;
 
+    const lastKey = form.historyLastShortcut.trim();
+    if (lastKey && !parseShortcut(lastKey)) {
+      setStatus({
+        type: "error",
+        text: "「唤起最后一条历史」快捷键格式不正确，示例：Mod+Shift+L。"
+      });
+      return;
+    }
+    const listKey = form.historyListShortcut.trim();
+    if (listKey && !parseShortcut(listKey)) {
+      setStatus({
+        type: "error",
+        text: "「打开历史列表」快捷键格式不正确，示例：Mod+Shift+H。"
+      });
+      return;
+    }
+    if (lastKey && listKey && lastKey === listKey) {
+      setStatus({
+        type: "error",
+        text: "两个历史快捷键不能相同。"
+      });
+      return;
+    }
+
     setSaving(true);
     setStatus(null);
     try {
@@ -164,6 +199,35 @@ export default function App() {
       setStatus({ type: "error", text: `保存失败：${message}` });
     } finally {
       setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const list = await getResultHistory();
+        if (!cancelled) setHistoryCount(list.length);
+      } catch {
+        if (!cancelled) setHistoryCount(0);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleClearHistory = async () => {
+    setHistoryStatus(null);
+    try {
+      await clearResultHistory();
+      setHistoryCount(0);
+      setHistoryStatus({ type: "success", text: "已清空所有历史记录。" });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "未知错误，请稍后重试。";
+      setHistoryStatus({ type: "error", text: `清空失败：${message}` });
     }
   };
 
@@ -495,6 +559,89 @@ export default function App() {
               <p className="text-xs text-slate-500">
                 默认会跟随划词位置展示在选区下方；可选择固定到页面四个角。
               </p>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">历史记录</p>
+                <span className="text-xs text-slate-500">
+                  {historyCount == null
+                    ? "加载中..."
+                    : `当前已存：${historyCount} 条`}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                生成完成的结果会按顺序保存在本地（chrome.storage.local），可通过快捷键唤起最近一条结果或打开列表挑选。
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-800">
+                  保留条数（0 = 关闭历史；最大 {HISTORY_LIMITS.max}）
+                </label>
+                <Input
+                  type="number"
+                  min={HISTORY_LIMITS.min}
+                  max={HISTORY_LIMITS.max}
+                  step={1}
+                  value={String(form.maxHistorySize)}
+                  disabled={loading || saving}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    const num = raw === "" ? 0 : Number(raw);
+                    setForm((prev) => ({
+                      ...prev,
+                      maxHistorySize: Number.isFinite(num) ? num : prev.maxHistorySize
+                    }));
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-800">
+                    唤起最近一条结果
+                  </label>
+                  <Input
+                    placeholder="如：Mod+Shift+L（留空表示不启用）"
+                    value={form.historyLastShortcut}
+                    disabled={loading || saving}
+                    onChange={(event) =>
+                      handleChange("historyLastShortcut")(event.target.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-800">
+                    打开历史列表
+                  </label>
+                  <Input
+                    placeholder="如：Mod+Shift+H（留空表示不启用）"
+                    value={form.historyListShortcut}
+                    disabled={loading || saving}
+                    onChange={(event) =>
+                      handleChange("historyListShortcut")(event.target.value)
+                    }
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                建议使用 <code>Mod</code> 兼容 Win/Linux（Ctrl）与 macOS（Command）。
+              </p>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleClearHistory}
+                  disabled={!historyCount}
+                >
+                  清空历史
+                </Button>
+                {historyStatus ? (
+                  <StatusBadge type={historyStatus.type} text={historyStatus.text} />
+                ) : null}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
