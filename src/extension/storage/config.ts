@@ -1,15 +1,39 @@
+export type ResultPanelPosition =
+  | "default"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
 export type ExtensionConfig = {
   apiBaseUrl: string;
   token: string;
   model: string;
+  resultPanelPosition: ResultPanelPosition;
 };
 
-const STORAGE_KEY = "swissKnifeConfig";
+export const STORAGE_KEY = "swissKnifeConfig";
+
+const VALID_POSITIONS: ReadonlySet<ResultPanelPosition> = new Set([
+  "default",
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right"
+]);
+
 const DEFAULT_CONFIG: ExtensionConfig = {
   apiBaseUrl: "",
   token: "",
-  model: ""
+  model: "",
+  resultPanelPosition: "default"
 };
+
+function normalizePosition(value: unknown): ResultPanelPosition {
+  return typeof value === "string" && VALID_POSITIONS.has(value as ResultPanelPosition)
+    ? (value as ResultPanelPosition)
+    : DEFAULT_CONFIG.resultPanelPosition;
+}
 
 function getFromStorage<T>(keys: string | string[]): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -42,7 +66,8 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
   return {
     apiBaseUrl: stored?.apiBaseUrl?.trim() ?? DEFAULT_CONFIG.apiBaseUrl,
     token: stored?.token?.trim() ?? DEFAULT_CONFIG.token,
-    model: stored?.model?.trim() ?? DEFAULT_CONFIG.model
+    model: stored?.model?.trim() ?? DEFAULT_CONFIG.model,
+    resultPanelPosition: normalizePosition(stored?.resultPanelPosition)
   };
 }
 
@@ -50,7 +75,8 @@ export async function saveExtensionConfig(config: ExtensionConfig): Promise<void
   const normalized: ExtensionConfig = {
     apiBaseUrl: config.apiBaseUrl.trim(),
     token: config.token.trim(),
-    model: config.model.trim()
+    model: config.model.trim(),
+    resultPanelPosition: normalizePosition(config.resultPanelPosition)
   };
 
   await setToStorage({

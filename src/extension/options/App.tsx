@@ -20,7 +20,8 @@ import {
   getDefaultConfig,
   getExtensionConfig,
   saveExtensionConfig,
-  type ExtensionConfig
+  type ExtensionConfig,
+  type ResultPanelPosition
 } from "../storage/config";
 import {
   createTool,
@@ -63,6 +64,14 @@ const TOOL_ICONS = {
 
 type StatusType = "success" | "error" | "info";
 type Status = { type: StatusType; text: string } | null;
+
+const RESULT_POSITION_OPTIONS: { value: ResultPanelPosition; label: string }[] = [
+  { value: "default", label: "默认（划词区域附近 / 自动）" },
+  { value: "top-left", label: "页面左上角" },
+  { value: "top-right", label: "页面右上角" },
+  { value: "bottom-left", label: "页面左下角" },
+  { value: "bottom-right", label: "页面右下角" }
+];
 
 export default function App() {
   const [form, setForm] = useState<ExtensionConfig>(getDefaultConfig());
@@ -127,7 +136,8 @@ export default function App() {
     return (
       form.apiBaseUrl !== loaded.apiBaseUrl ||
       form.token !== loaded.token ||
-      form.model !== loaded.model
+      form.model !== loaded.model ||
+      form.resultPanelPosition !== loaded.resultPanelPosition
     );
   }, [form, loaded]);
 
@@ -457,6 +467,33 @@ export default function App() {
               />
               <p className="text-xs text-slate-500">
                 将作为 OpenAI 兼容接口的 <code>model</code> 参数传递。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-800">
+                结果弹窗位置
+              </label>
+              <select
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm disabled:opacity-60"
+                value={form.resultPanelPosition}
+                disabled={loading || saving}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    resultPanelPosition: event.target
+                      .value as ResultPanelPosition
+                  }))
+                }
+              >
+                {RESULT_POSITION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                默认会跟随划词位置展示在选区下方；可选择固定到页面四个角。
               </p>
             </div>
 

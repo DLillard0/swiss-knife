@@ -36,6 +36,11 @@ import {
 } from "./shared/shortcut";
 import { getTools } from "./storage/tools";
 import {
+  getExtensionConfig,
+  STORAGE_KEY as CONFIG_STORAGE_KEY,
+  type ResultPanelPosition,
+} from "./storage/config";
+import {
   AiToolInteraction,
   type ToolRunRequest,
 } from "./components/ai-tool-interaction";
@@ -64,13 +69,34 @@ const ICONS = {
   Puzzle,
 } satisfies Record<string, React.ComponentType<{ className?: string }>>;
 
+type ResultPlacement =
+  | "anchored"
+  | "center"
+  | "manual"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+const CORNER_PLACEMENTS = new Set<ResultPlacement>([
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+]);
+
+const isCornerPlacement = (
+  placement: ResultPlacement | undefined
+): placement is "top-left" | "top-right" | "bottom-left" | "bottom-right" =>
+  !!placement && CORNER_PLACEMENTS.has(placement);
+
 type PanelState =
   | { open: false }
   | {
       open: true;
       anchor: { x: number; y: number };
       mode: "tools" | "result";
-      placement?: "anchored" | "center" | "manual";
+      placement?: ResultPlacement;
     };
 
 function ContentShell() {
@@ -88,6 +114,7 @@ function ContentShell() {
   } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const resultPanelRef = useRef<HTMLDivElement | null>(null);
+  const resultPositionRef = useRef<ResultPanelPosition>("default");
   const dragRef = useRef<{
     offsetX: number;
     offsetY: number;
@@ -246,6 +273,32 @@ function ContentShell() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const config = await getExtensionConfig();
+        if (!cancelled) resultPositionRef.current = config.resultPanelPosition;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "未知错误";
+        console.warn("[Swiss Knife] load config failed:", message);
+      }
+    };
+    load();
+
+    const onChanged: Parameters<
+      typeof chrome.storage.onChanged.addListener
+    >[0] = (changes, areaName) => {
+      if (areaName !== "sync") return;
+      if (changes?.[CONFIG_STORAGE_KEY]) load();
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => {
+      cancelled = true;
+      chrome.storage.onChanged.removeListener(onChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     let raf = 0;
     const update = () => {
       raf = 0;
@@ -283,7 +336,7 @@ function ContentShell() {
     (
       anchor: { x: number; y: number },
       mode: "tools" | "result",
-      placement: "anchored" | "center" | "manual" = "anchored"
+      placement: ResultPlacement = "anchored"
     ) => {
       setPanel({ open: true, anchor, mode, placement });
     },
@@ -376,7 +429,7 @@ function ContentShell() {
     async (
       tool: ToolDefinition,
       collectionsOverride?: Collections,
-      placement: "anchored" | "center" | "manual" = "anchored"
+      placement: ResultPlacement = "anchored"
     ) => {
       // 注意：AI 交互逻辑已抽离到 AiToolInteraction 组件
       // 点击工具后立刻展示结果弹窗（loading），位置在 selection 下方
@@ -405,12 +458,30 @@ function ContentShell() {
       if (typeof collections.selection === "string")
         setSelection(collections.selection.trim());
 
-      // 规则 2：提示词没用到任何 collection，则结果居中
-      const finalPlacement =
-        usedCollections.length === 0 ? "center" : placement;
+      // 用户在 options 中配置了固定的结果弹窗位置：四个角之一
+      const cornerOverride: ResultPlacement | null = (() => {
+        const pos = resultPositionRef.current;
+        if (
+          pos === "top-left" ||
+          pos === "top-right" ||
+          pos === "bottom-left" ||
+          pos === "bottom-right"
+        ) {
+          return pos;
+        }
+        return null;
+      })();
+
+      // 规则 2：提示词没用到任何 collection，则结果居中（除非用户配置了角落位置）
+      const finalPlacement: ResultPlacement = cornerOverride
+        ? cornerOverride
+        : usedCollections.length === 0
+        ? "center"
+        : placement;
 
       let anchor: { x: number; y: number };
-      if (finalPlacement === "center") {
+      if (finalPlacement === "center" || isCornerPlacement(finalPlacement)) {
+        // center / 角落位置不依赖 anchor，但仍保留一个合理值以便后续 manual 拖拽接管
         anchor = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
       } else {
         // 尽量锚定在 selection 下方（如果有 selection）
@@ -627,12 +698,23 @@ function ContentShell() {
 
   const panelStyle: React.CSSProperties | undefined = useMemo(() => {
     if (!panel.open) return undefined;
-    if (panel.mode === "result" && panel.placement === "center") {
-      return {
-        left: "50%",
-        top: "50%",
-        transform: "translate(-50%, -50%)",
-      };
+    if (panel.mode === "result") {
+      if (panel.placement === "center") {
+        return {
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+        };
+      }
+      const cornerMargin = 16;
+      if (panel.placement === "top-left")
+        return { left: cornerMargin, top: cornerMargin };
+      if (panel.placement === "top-right")
+        return { right: cornerMargin, top: cornerMargin };
+      if (panel.placement === "bottom-left")
+        return { left: cornerMargin, bottom: cornerMargin };
+      if (panel.placement === "bottom-right")
+        return { right: cornerMargin, bottom: cornerMargin };
     }
     const margin = 12;
     const width = isToolbar ? toolbarWidth : 320;
@@ -651,7 +733,8 @@ function ContentShell() {
       !panel.open ||
       panelMode !== "result" ||
       panelPlacement === "center" ||
-      panelPlacement === "manual"
+      panelPlacement === "manual" ||
+      isCornerPlacement(panelPlacement)
     )
       return;
     if (panelAnchorY == null) return;
