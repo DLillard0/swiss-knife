@@ -2,9 +2,11 @@ import { ToolDefinition } from "@/extension/shared/tool";
 import { translateTool } from "./translate";
 import { summarizePageTool } from "./summarize-page";
 import { zhToEnTool } from "./zh-to-en";
+import { grammarAnalysisTool } from "./grammar-analysis";
 
 const DEFAULT_TOOLS: ToolDefinition[] = [
   translateTool,
+  grammarAnalysisTool,
   summarizePageTool,
   zhToEnTool
 ];
